@@ -187,6 +187,26 @@ body {
   color: #1e293b;
 }
 
+.status-card {
+  border-left: 6px solid #f59e0b;
+  background: #fffaf0;
+}
+
+.status-card.fail {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+.status-card h3 {
+  margin-bottom: 8px;
+}
+
+.status-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #334155;
+}
+
 .help ol,
 .help ul {
   margin: 8px 0 0;

@@ -51,6 +51,7 @@ function BeamScene({
   lengthM,
   sideMm,
   forceN,
+  damageLevel,
 }: {
   x: number[]
   w: number[]
@@ -58,6 +59,7 @@ function BeamScene({
   lengthM: number
   sideMm: number
   forceN: number
+  damageLevel: 'ok' | 'warn' | 'fail'
 }) {
   const width = 980
   const height = 340
@@ -73,7 +75,9 @@ function BeamScene({
   // Physical-like base scale in px per meter (depends on beam length),
   // with a soft cap only when deformation would overflow the viewport.
   const basePxPerMeter = (0.22 * spanPx) / Math.max(lengthM, 1e-6)
-  const yScale = Math.min(basePxPerMeter, maxDraw / amp)
+  const clampPxPerMeter = maxDraw / amp
+  const yScale = Math.min(basePxPerMeter, clampPxPerMeter)
+  const isClamped = clampPxPerMeter < basePxPerMeter
 
   const xToPx = (xx: number) => padX + (xx / Math.max(lengthM, 1e-6)) * spanPx
   const yToPx = (yy: number) => centerY - yy * yScale
@@ -109,8 +113,8 @@ function BeamScene({
             <stop offset="100%" stopColor="#4664b0" />
           </linearGradient>
           <linearGradient id="deformedFill" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%" stopColor="#f97316" />
-            <stop offset="100%" stopColor="#dc2626" />
+            <stop offset="0%" stopColor={damageLevel === 'ok' ? '#f97316' : '#fb7185'} />
+            <stop offset="100%" stopColor={damageLevel === 'fail' ? '#991b1b' : '#dc2626'} />
           </linearGradient>
           <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
             <path d="M0,0 L8,4 L0,8 z" fill="#1d4ed8" />
@@ -125,6 +129,17 @@ function BeamScene({
 
         <polygon points={`${undeformedTop} ${undeformedBottom}`} fill="url(#beamFill)" opacity="0.25" />
         <polygon points={`${deformedTop} ${deformedBottom}`} fill="url(#deformedFill)" opacity="0.88" />
+
+        {damageLevel === 'fail' && (
+          <polyline
+            points={`${padX + 70},${centerY - 18} ${padX + 76},${centerY - 6} ${padX + 66},${centerY + 2} ${padX + 74},${centerY + 14}`}
+            stroke="#111827"
+            strokeWidth={3}
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
 
         <g opacity={0.65}>
           {x.map((xx, i) => {
@@ -186,6 +201,16 @@ function BeamScene({
         <text x={padX + 22} y={78} fill="#354860" fontSize="12">
           Элементы: {elementCount} (на схеме: {shownElementCount})
         </text>
+        {isClamped && (
+          <text x={padX + 22} y={96} fill="#b45309" fontSize="12" fontWeight={700}>
+            Визуализация ограничена по высоте (прогиб очень большой)
+          </text>
+        )}
+        {damageLevel === 'fail' && (
+          <text x={padX + 230} y={28} fill="#991b1b" fontSize="13" fontWeight={700}>
+            Опасный режим: вероятна потеря несущей способности
+          </text>
+        )}
       </svg>
     </div>
   )
@@ -239,6 +264,39 @@ function App() {
     if (!beamResult || beamResult.sigmaMax <= 0) return null
     return (params.sigmaYieldMpa * 1e6) / beamResult.sigmaMax
   }, [beamResult, params.sigmaYieldMpa])
+
+  const assessment = useMemo(() => {
+    if (!beamResult || params.femType !== 'Beam') {
+      return { level: 'ok' as const, messages: [] as string[] }
+    }
+
+    const messages: string[] = []
+    const deltaRatio = beamResult.deltaMax / Math.max(params.lengthM, 1e-9)
+    const yielded = reserveFactor !== null && reserveFactor < 1
+    const severeYield = reserveFactor !== null && reserveFactor < 0.5
+    const largeDeflection = deltaRatio > 0.1
+    const extremeDeflection = deltaRatio > 0.25
+
+    if (yielded) {
+      messages.push(
+        `Превышен предел текучести: σ_max (${formatNumber(beamResult.sigmaMax / 1e6, 1)} МПа) > σ_y (${formatNumber(params.sigmaYieldMpa, 1)} МПа).`
+      )
+    }
+    if (largeDeflection) {
+      messages.push(
+        `Большой относительный прогиб: δ/L = ${formatNumber(deltaRatio * 100, 2)}%. Линейная модель может быть некорректной.`
+      )
+    }
+    if (extremeDeflection) {
+      messages.push('Крайне большой прогиб: возможна потеря работоспособности конструкции.')
+    }
+
+    let level: 'ok' | 'warn' | 'fail' = 'ok'
+    if (severeYield || extremeDeflection) level = 'fail'
+    else if (yielded || largeDeflection) level = 'warn'
+
+    return { level, messages }
+  }, [beamResult, params.femType, params.lengthM, params.sigmaYieldMpa, reserveFactor])
 
   return (
     <div className="layout">
@@ -395,6 +453,17 @@ function App() {
 
         {params.femType === 'Beam' && beamResult && (
           <>
+            {assessment.level !== 'ok' && (
+              <section className={`card status-card ${assessment.level}`}>
+                <h3>{assessment.level === 'fail' ? 'Критическое состояние балки' : 'Предупреждение по расчету'}</h3>
+                <ul>
+                  {assessment.messages.map((m, i) => (
+                    <li key={`msg-${i}`}>{m}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <section>
               <div className="toolbar">
                 <h2>Деформация балки</h2>
@@ -418,6 +487,7 @@ function App() {
                 lengthM={params.lengthM}
                 sideMm={params.sideMm}
                 forceN={params.forceN}
+                damageLevel={assessment.level}
               />
             </section>
 
