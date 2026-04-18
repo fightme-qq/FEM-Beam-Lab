@@ -33,7 +33,7 @@ const initialParams: RunParams = {
   elasticModulusGpa: 210,
   nu: 0.3,
   sigmaYieldMpa: 250,
-  forceN: 1000,
+  forceN: 500,
   nElements: 16,
   femType: 'Beam',
   solidOrder: 1,
