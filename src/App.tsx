@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -260,6 +261,28 @@ function App() {
     }))
   }, [convergence])
 
+  const deflectionCompareData = useMemo(() => {
+    if (!beamResult) return []
+    return beamResult.x.map((xx, i) => ({
+      x: xx,
+      wFemMm: beamResult.w[i] * 1000,
+      wAnalMm: beamResult.wAnalytic[i] * 1000,
+    }))
+  }, [beamResult])
+
+  const internalForceData = useMemo(() => {
+    if (!beamResult) return []
+    return beamResult.xElementMid.map((xx, i) => ({
+      xMid: xx,
+      vFem: beamResult.shearForceElement[i],
+      vAnal: beamResult.shearAnalyticElement[i],
+      mFem: beamResult.bendingMomentElement[i],
+      mAnal: beamResult.momentAnalyticElement[i],
+      sigmaFem: beamResult.sigmaVmElement[i] / 1e6,
+      sigmaAnal: beamResult.sigmaAnalyticElement[i] / 1e6,
+    }))
+  }, [beamResult])
+
   const reserveFactor = useMemo(() => {
     if (!beamResult || beamResult.sigmaMax <= 0) return null
     return (params.sigmaYieldMpa * 1e6) / beamResult.sigmaMax
@@ -410,40 +433,69 @@ function App() {
         <section className="card results">
           <h2>Результаты</h2>
           {params.femType === 'Beam' && beamResult ? (
-            <div className="metrics-grid">
-              <div>
-                <span>δ_max FEM</span>
-                <strong>{formatNumber(beamResult.deltaMax * 1000, 3)} мм</strong>
+            <>
+              <div className="metrics-grid">
+                <div>
+                  <span>δ_max FEM</span>
+                  <strong>{formatNumber(beamResult.deltaMax * 1000, 3)} мм</strong>
+                </div>
+                <div>
+                  <span>δ_max аналитика</span>
+                  <strong>{formatNumber(beamResult.deltaAnalytic * 1000, 3)} мм</strong>
+                </div>
+                <div>
+                  <span>σ_max FEM</span>
+                  <strong>{formatNumber(beamResult.sigmaMax / 1e6, 3)} МПа</strong>
+                </div>
+                <div>
+                  <span>σ_max аналитика</span>
+                  <strong>{formatNumber(beamResult.sigmaAnalytic / 1e6, 3)} МПа</strong>
+                </div>
+                <div>
+                  <span>Ошибка по прогибу (точка)</span>
+                  <strong>{formatNumber(beamResult.deltaErrorPercent, 6)} %</strong>
+                </div>
+                <div>
+                  <span>Ошибка по напряжению (точка)</span>
+                  <strong>{formatNumber(beamResult.sigmaErrorPercent, 6)} %</strong>
+                </div>
+                <div>
+                  <span>Коэфф. запаса</span>
+                  <strong>{reserveFactor ? formatNumber(reserveFactor, 3) : '—'}</strong>
+                </div>
+                <div>
+                  <span>ν (для будущего Solid)</span>
+                  <strong>{formatNumber(params.nu, 3)}</strong>
+                </div>
               </div>
-              <div>
-                <span>δ_max аналитика</span>
-                <strong>{formatNumber(beamResult.deltaAnalytic * 1000, 3)} мм</strong>
+
+              <div className="quality-grid">
+                <div>
+                  <span>Реакция в заделке R_y</span>
+                  <strong>{formatNumber(beamResult.reactionForce, 3)} Н</strong>
+                </div>
+                <div>
+                  <span>Реактивный момент M_fix</span>
+                  <strong>{formatNumber(beamResult.reactionMoment, 3)} Н·м</strong>
+                </div>
+                <div>
+                  <span>Невязка баланса сил</span>
+                  <strong>{formatNumber(beamResult.equilibriumForceResidual, 8)} Н</strong>
+                </div>
+                <div>
+                  <span>Невязка баланса моментов</span>
+                  <strong>{formatNumber(beamResult.equilibriumMomentResidual, 8)} Н·м</strong>
+                </div>
+                <div>
+                  <span>L2 ошибка прогиба</span>
+                  <strong>{formatNumber(beamResult.l2DeflectionErrorPercent, 6)} %</strong>
+                </div>
+                <div>
+                  <span>L2 ошибка σ по длине</span>
+                  <strong>{formatNumber(beamResult.l2SigmaErrorPercent, 6)} %</strong>
+                </div>
               </div>
-              <div>
-                <span>σ_max FEM</span>
-                <strong>{formatNumber(beamResult.sigmaMax / 1e6, 3)} МПа</strong>
-              </div>
-              <div>
-                <span>σ_max аналитика</span>
-                <strong>{formatNumber(beamResult.sigmaAnalytic / 1e6, 3)} МПа</strong>
-              </div>
-              <div>
-                <span>Ошибка по прогибу</span>
-                <strong>{formatNumber(beamResult.deltaErrorPercent, 3)} %</strong>
-              </div>
-              <div>
-                <span>Ошибка по напряжению</span>
-                <strong>{formatNumber(beamResult.sigmaErrorPercent, 3)} %</strong>
-              </div>
-              <div>
-                <span>Коэфф. запаса</span>
-                <strong>{reserveFactor ? formatNumber(reserveFactor, 3) : '—'}</strong>
-              </div>
-              <div>
-                <span>ν (для будущего Solid)</span>
-                <strong>{formatNumber(params.nu, 3)}</strong>
-              </div>
-            </div>
+            </>
           ) : (
             <p>
               Solid-режим пока заглушка. В текущей версии реализован полноценный Beam FEM.
@@ -519,6 +571,56 @@ function App() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+            </section>
+
+            <section className="charts-grid">
+              <div className="card">
+                <h3>Прогиб по длине: FEM vs аналитика</h3>
+                <ResponsiveContainer width="100%" height={270}>
+                  <LineChart data={deflectionCompareData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="x" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => `${formatNumber(Number(value), 5)} мм`} />
+                    <Legend />
+                    <Line type="monotone" dataKey="wFemMm" stroke="#2563eb" strokeWidth={3} dot={false} name="w FEM, мм" />
+                    <Line type="monotone" dataKey="wAnalMm" stroke="#0f766e" strokeWidth={2} dot={false} name="w аналитика, мм" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="card">
+                <h3>Диаграммы внутренних усилий V(x), M(x)</h3>
+                <ResponsiveContainer width="100%" height={270}>
+                  <LineChart data={internalForceData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="xMid" />
+                    <YAxis yAxisId="left" />
+                    <YAxis yAxisId="right" orientation="right" />
+                    <Tooltip />
+                    <Legend />
+                    <Line yAxisId="left" type="stepAfter" dataKey="vFem" stroke="#7c3aed" strokeWidth={3} dot={false} name="V FEM, Н" />
+                    <Line yAxisId="left" type="stepAfter" dataKey="vAnal" stroke="#4c1d95" strokeWidth={2} dot={false} name="V аналитика, Н" />
+                    <Line yAxisId="right" type="linear" dataKey="mFem" stroke="#dc2626" strokeWidth={3} dot={false} name="M FEM, Н·м" />
+                    <Line yAxisId="right" type="linear" dataKey="mAnal" stroke="#991b1b" strokeWidth={2} dot={false} name="M аналитика, Н·м" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+
+            <section className="card">
+              <h3>Сравнение напряжений по длине (элементные центры)</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={internalForceData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="xMid" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => `${formatNumber(Number(value), 4)} МПа`} />
+                  <Legend />
+                  <Line type="monotone" dataKey="sigmaFem" stroke="#ef4444" strokeWidth={3} dot={false} name="σ FEM, МПа" />
+                  <Line type="monotone" dataKey="sigmaAnal" stroke="#9f1239" strokeWidth={2} dot={false} name="σ аналитика, МПа" />
+                </LineChart>
+              </ResponsiveContainer>
             </section>
           </>
         )}

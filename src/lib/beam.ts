@@ -10,7 +10,21 @@ export type BeamResult = {
   x: number[]
   w: number[]
   theta: number[]
+  wAnalytic: number[]
+  sigmaAnalyticAtX: number[]
+  xElementMid: number[]
+  sigmaAnalyticElement: number[]
   sigmaVmElement: number[]
+  shearForceElement: number[]
+  bendingMomentElement: number[]
+  shearAnalyticElement: number[]
+  momentAnalyticElement: number[]
+  reactionForce: number
+  reactionMoment: number
+  equilibriumForceResidual: number
+  equilibriumMomentResidual: number
+  l2DeflectionErrorPercent: number
+  l2SigmaErrorPercent: number
   deltaMax: number
   sigmaMax: number
   deltaAnalytic: number
@@ -130,7 +144,21 @@ export function solveCantileverBeam(input: BeamInput): BeamResult {
   const theta = Array.from({ length: nNodes }, (_, n) => u[2 * n + 1])
   const x = Array.from({ length: nNodes }, (_, n) => (lengthM * n) / safeElements)
 
+  const reactions = Array(totalDof).fill(0)
+  for (let r = 0; r < totalDof; r += 1) {
+    let sum = 0
+    for (let c = 0; c < totalDof; c += 1) {
+      sum += kGlobal[r][c] * u[c]
+    }
+    reactions[r] = sum - fGlobal[r]
+  }
+  const reactionForce = reactions[0]
+  const reactionMoment = reactions[1]
+
   const sigmaVmElement: number[] = Array(safeElements).fill(0)
+  const shearForceElement: number[] = Array(safeElements).fill(0)
+  const bendingMomentElement: number[] = Array(safeElements).fill(0)
+  const xElementMid: number[] = Array(safeElements).fill(0)
   const c = a / 2
 
   for (let el = 0; el < safeElements; el += 1) {
@@ -148,6 +176,9 @@ export function solveCantileverBeam(input: BeamInput): BeamResult {
 
     const mMax = Math.max(Math.abs(q[1]), Math.abs(q[3]))
     sigmaVmElement[el] = (mMax * c) / i
+    shearForceElement[el] = q[0]
+    bendingMomentElement[el] = 0.5 * (q[1] + q[3])
+    xElementMid[el] = 0.5 * (x[n1] + x[n2])
   }
 
   const deltaMax = Math.abs(w[w.length - 1])
@@ -159,11 +190,44 @@ export function solveCantileverBeam(input: BeamInput): BeamResult {
   const deltaErrorPercent = deltaAnalytic > 0 ? (Math.abs(deltaMax - deltaAnalytic) / deltaAnalytic) * 100 : 0
   const sigmaErrorPercent = sigmaAnalytic > 0 ? (Math.abs(sigmaMax - sigmaAnalytic) / sigmaAnalytic) * 100 : 0
 
+  const wAnalytic = x.map((xx) => -(Math.abs(forceN) * xx ** 2 * (3 * lengthM - xx)) / (6 * e * i))
+  const sigmaAnalyticAtX = x.map((xx) => (6 * Math.abs(forceN) * (lengthM - xx)) / (a ** 3))
+  const sigmaAnalyticElement = xElementMid.map((xx) => (6 * Math.abs(forceN) * (lengthM - xx)) / (a ** 3))
+  const shearAnalyticElement = xElementMid.map(() => -Math.abs(forceN))
+  const momentAnalyticElement = xElementMid.map((xx) => -Math.abs(forceN) * (lengthM - xx))
+
+  const wAnalyticNorm = Math.sqrt(wAnalytic.reduce((acc, v) => acc + v * v, 0))
+  const wErrorNorm = Math.sqrt(w.reduce((acc, v, idx) => acc + (v - wAnalytic[idx]) ** 2, 0))
+  const l2DeflectionErrorPercent = wAnalyticNorm > 0 ? (wErrorNorm / wAnalyticNorm) * 100 : 0
+
+  const sigmaAnalyticNorm = Math.sqrt(sigmaAnalyticElement.reduce((acc, v) => acc + v * v, 0))
+  const sigmaErrorNorm = Math.sqrt(
+    sigmaVmElement.reduce((acc, v, idx) => acc + (v - sigmaAnalyticElement[idx]) ** 2, 0),
+  )
+  const l2SigmaErrorPercent = sigmaAnalyticNorm > 0 ? (sigmaErrorNorm / sigmaAnalyticNorm) * 100 : 0
+
+  const equilibriumForceResidual = reactionForce - Math.abs(forceN)
+  const equilibriumMomentResidual = reactionMoment - Math.abs(forceN) * lengthM
+
   return {
     x,
     w,
     theta,
+    wAnalytic,
+    sigmaAnalyticAtX,
+    xElementMid,
+    sigmaAnalyticElement,
     sigmaVmElement,
+    shearForceElement,
+    bendingMomentElement,
+    shearAnalyticElement,
+    momentAnalyticElement,
+    reactionForce,
+    reactionMoment,
+    equilibriumForceResidual,
+    equilibriumMomentResidual,
+    l2DeflectionErrorPercent,
+    l2SigmaErrorPercent,
     deltaMax,
     sigmaMax,
     deltaAnalytic,
