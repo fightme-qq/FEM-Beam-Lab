@@ -70,7 +70,10 @@ function BeamScene({
 
   const amp = Math.max(1e-6, ...wScaled.map((v) => Math.abs(v)))
   const maxDraw = Math.min(130, 0.42 * (height - 2 * padY))
-  const yScale = maxDraw / amp
+  // Physical-like base scale in px per meter (depends on beam length),
+  // with a soft cap only when deformation would overflow the viewport.
+  const basePxPerMeter = (0.22 * spanPx) / Math.max(lengthM, 1e-6)
+  const yScale = Math.min(basePxPerMeter, maxDraw / amp)
 
   const xToPx = (xx: number) => padX + (xx / Math.max(lengthM, 1e-6)) * spanPx
   const yToPx = (yy: number) => centerY - yy * yScale
@@ -190,7 +193,7 @@ function BeamScene({
 
 function App() {
   const [params, setParams] = useState<RunParams>(initialParams)
-  const [deformationScale, setDeformationScale] = useState(60)
+  const [deformationScale, setDeformationScale] = useState(20)
 
   const beamResult = useMemo(() => {
     if (params.femType !== 'Beam') return null
