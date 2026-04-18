@@ -105,7 +105,7 @@ function BeamScene({
 
   return (
     <div className="card">
-      <h3>Визуализация балки (без дублей графика)</h3>
+      <h3>Визуализация балки</h3>
       <svg viewBox={`0 0 ${width} ${height}`} className="beam-svg" role="img" aria-label="Схема балки">
         <defs>
           <linearGradient id="beamFill" x1="0" x2="1" y1="0" y2="0">
